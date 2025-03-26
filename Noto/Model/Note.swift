@@ -10,6 +10,8 @@ import SwiftUI
 struct Note: Identifiable {
     var id: String = UUID().uuidString
     var color: Color
+    /// View Properties
+    var allowsHitTesting: Bool = false
 }
 
 var mockNotes: [Note] = [
