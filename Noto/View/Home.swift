@@ -13,6 +13,8 @@ struct Home: View {
     @State private var selectedNote: Note?
     @State private var deleteNote: Note?
     @State private var animateView: Bool = false
+    @FocusState private var isKeyboardActive: Bool
+    @State private var titleNoteSize: CGSize = .zero
     @Namespace private var animation
     @Query(sort: [.init(\Note.dateCreated, order: .reverse)], animation: .snappy)
     private var notes: [Note]
@@ -41,10 +43,11 @@ struct Home: View {
         }
         .safeAreaPadding(15)
         .overlay {
-            GeometryReader { _ in
+            GeometryReader {
+                let size = $0.size
                 ForEach(notes) { note in
                     if note.id == selectedNote?.id && animateView {
-                        DetailView(animation: animation, note: note)
+                        DetailView(size: size, titleNoteSize: titleNoteSize, animation: animation, note: note)
                             .ignoresSafeArea(.container, edges: .top)
                     }
                 }
@@ -53,6 +56,7 @@ struct Home: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             BottomBar()
         }
+        .focused($isKeyboardActive)
     }
     
     /// Custom Search Bar With Some Basic Components
@@ -79,56 +83,80 @@ struct Home: View {
             } else {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(note.color.gradient)
+                    .overlay {
+                        TitleNoteView(size: titleNoteSize, note: note)
+                    }
                     .matchedGeometryEffect(id: note.id, in: animation)
             }
         }
+        .onGeometryChange(for: CGSize.self) {
+            $0.size
+        } action: { newValue in
+            titleNoteSize = newValue
+        }
     }
+    
     @ViewBuilder
     func BottomBar() -> some View {
         HStack(spacing: 15) {
-            Button {
-                if selectedNote == nil {
-                    createEmptyNote()
-                } else {
-                    selectedNote?.allowsHitTesting = false
-                    deleteNote = selectedNote
-                    withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
-                        selectedNote = nil
-                        animateView = false
-                    } completion: {
-                        deleteNoteFromContext()
+            Group {
+                if !isKeyboardActive {
+                    Button {
+                        if selectedNote == nil {
+                            createEmptyNote()
+                        } else {
+                            selectedNote?.allowsHitTesting = false
+                            deleteNote = selectedNote
+                            withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
+                                selectedNote = nil
+                                animateView = false
+                            } completion: {
+                                deleteNoteFromContext()
+                            }
+                        }
+                    } label: {
+                        Image(systemName: selectedNote == nil ? "plus.circle.fill" : "trash.fill")
+                            .font(.title2)
+                            .foregroundStyle(selectedNote == nil ? Color.primary : .red)
+                            .contentShape(.rect)
+                            .contentTransition(.symbolEffect(.replace))
                     }
                 }
-            } label: {
-                Image(systemName: selectedNote == nil ? "plus.circle.fill" : "trash.fill")
-                    .font(.title2)
-                    .foregroundStyle(selectedNote == nil ? Color.primary : .red)
-                    .contentShape(.rect)
-                    .contentTransition(.symbolEffect(.replace))
             }
+            
             Spacer(minLength: 0)
             
-            if selectedNote != nil {
-                Button {
-                    selectedNote?.allowsHitTesting = false
-                    
-                    if let selectedNote, (selectedNote.title.isEmpty && selectedNote.content.isEmpty) {
-                        deleteNote = selectedNote
+            ZStack {
+                if isKeyboardActive {
+                    Button("Done") {
+                        isKeyboardActive = false
                     }
-                    
-                    withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
-                        animateView = false
-                        selectedNote = nil
-                    } completion: {
-                        deleteNoteFromContext()
-                    }
-                } label: {
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.title3)
-                        .foregroundStyle(Color.primary)
-                        .contentShape(.rect)
+                    .font(.title3)
+                    .foregroundStyle(Color.primary)
+                    .transition(.blurReplace)
                 }
-                .transition(.opacity)
+                if selectedNote != nil && !isKeyboardActive {
+                    Button {
+                        selectedNote?.allowsHitTesting = false
+                        
+                        if let selectedNote, (selectedNote.title.isEmpty && selectedNote.content.isEmpty) {
+                            deleteNote = selectedNote
+                        }
+                        
+                        withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
+                            animateView = false
+                            selectedNote = nil
+                        } completion: {
+                            deleteNoteFromContext()
+                        }
+                    } label: {
+                        Image(systemName: "square.grid.2x2.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color.primary)
+                            .contentShape(.rect)
+                    }
+                    .transition(.blurReplace)
+                }
             }
         }
         .overlay {
@@ -138,14 +166,16 @@ struct Home: View {
                 .opacity(selectedNote != nil ? 0 : 1)
         }
         .overlay {
-            if selectedNote != nil {
+            if selectedNote != nil && !isKeyboardActive {
                 CardColorPicker()
                     .transition(.blurReplace)
             }
         }
-        .padding(15)
+        .padding(.horizontal, 15)
+        .padding(.vertical, isKeyboardActive ? 8 : 15)
         .background(.bar)
         .animation(noteAnimation, value: selectedNote != nil)
+        .animation(noteAnimation, value: isKeyboardActive)
     }
     
     @ViewBuilder
@@ -189,32 +219,6 @@ struct Home: View {
             try? context.save()
             self.deleteNote = nil
         }
-    }
-}
-
-struct DetailView: View {
-    var animation: Namespace.ID
-    var note: Note
-    /// View Properties
-    @State private var animateLayers: Bool = false // using this property to remove the corner radius in the detail view
-    
-    var body: some View {
-        RoundedRectangle(cornerRadius: animateLayers ? 0 : 10)
-            .fill(note.color.gradient)
-            .matchedGeometryEffect(id: note.id, in: animation)
-            .transition(.offset(y: 1))
-            .allowsHitTesting(note.allowsHitTesting)
-            .onChange(of: note.allowsHitTesting, initial: true) { oldValue, newValue in
-                withAnimation(noteAnimation) {
-                    animateLayers = newValue
-                }
-            }
-    }
-}
-
-extension View {
-    var noteAnimation: Animation {
-        .smooth(duration: 0.3, extraBounce: 0)
     }
 }
 
