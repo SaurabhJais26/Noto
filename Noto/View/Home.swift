@@ -6,13 +6,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct Home: View {
     @State private var searchText: String = ""
     @State private var selectedNote: Note?
     @State private var animateView: Bool = false
     @Namespace private var animation
-    @State private var notes: [Note] = mockNotes
+    @Query(sort: [.init(\Note.dateCreated, order: .reverse)], animation: .snappy)
+    private var notes: [Note]
+    @Environment(\.modelContext) private var context
     
     var body: some View {
         ScrollView(.vertical) {
@@ -20,7 +23,7 @@ struct Home: View {
                 SearchBar()
                 
                 LazyVGrid(columns: Array(repeating: GridItem(), count: 2)) {
-                    ForEach($notes) { $note in
+                    ForEach(notes) { note in
                         CardView(note)
                             .frame(height: 160)
                             .onTapGesture {
@@ -83,7 +86,9 @@ struct Home: View {
     func BottomBar() -> some View {
         HStack(spacing: 15) {
             Button {
-                
+                if selectedNote == nil {
+                    createEmptyNote()
+                }
             } label: {
                 Image(systemName: selectedNote == nil ? "plus.circle.fill" : "trash.fill")
                     .font(.title2)
@@ -134,8 +139,32 @@ struct Home: View {
         HStack(spacing: 10) {
             ForEach(1...5, id: \.self) { index in
                 Circle()
-                    .fill(.red.gradient)
+                    .fill(Color("Note \(index)"))
                     .frame(width: 20, height: 20)
+                    .contentShape(.rect)
+                    .onTapGesture {
+                        withAnimation(noteAnimation) {
+                            selectedNote?.colorString = "Note \(index)"
+                        }
+                    }
+            }
+        }
+    }
+    
+    func createEmptyNote() {
+        let colors: [String] = (1...5).compactMap({ "Note \($0)" })
+        let randomColor = colors.randomElement()!
+        let note = Note(colorString: randomColor, title: "", content: "")
+        
+        context.insert(note)
+        
+        Task {
+            try? await Task.sleep(for: .seconds(0))
+            selectedNote = note
+            selectedNote?.allowsHitTesting = true
+            
+            withAnimation(noteAnimation) {
+                animateView = true
             }
         }
     }
