@@ -11,6 +11,7 @@ import SwiftData
 struct Home: View {
     @State private var searchText: String = ""
     @State private var selectedNote: Note?
+    @State private var deleteNote: Note?
     @State private var animateView: Bool = false
     @Namespace private var animation
     @Query(sort: [.init(\Note.dateCreated, order: .reverse)], animation: .snappy)
@@ -88,6 +89,15 @@ struct Home: View {
             Button {
                 if selectedNote == nil {
                     createEmptyNote()
+                } else {
+                    selectedNote?.allowsHitTesting = false
+                    deleteNote = selectedNote
+                    withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
+                        selectedNote = nil
+                        animateView = false
+                    } completion: {
+                        deleteNoteFromContext()
+                    }
                 }
             } label: {
                 Image(systemName: selectedNote == nil ? "plus.circle.fill" : "trash.fill")
@@ -100,13 +110,17 @@ struct Home: View {
             
             if selectedNote != nil {
                 Button {
-                    if let firstIndex = notes.firstIndex(where: { $0.id == selectedNote?.id }) {
-                        notes[firstIndex].allowsHitTesting = false
+                    selectedNote?.allowsHitTesting = false
+                    
+                    if let selectedNote, (selectedNote.title.isEmpty && selectedNote.content.isEmpty) {
+                        deleteNote = selectedNote
                     }
                     
-                    withAnimation(noteAnimation) {
+                    withAnimation(noteAnimation.logicallyComplete(after: 0.1), completionCriteria: .logicallyComplete) {
                         animateView = false
                         selectedNote = nil
+                    } completion: {
+                        deleteNoteFromContext()
                     }
                 } label: {
                     Image(systemName: "square.grid.2x2.fill")
@@ -166,6 +180,14 @@ struct Home: View {
             withAnimation(noteAnimation) {
                 animateView = true
             }
+        }
+    }
+    
+    func deleteNoteFromContext() {
+        if let deleteNote {
+            context.delete(deleteNote)
+            try? context.save()
+            self.deleteNote = nil
         }
     }
 }
