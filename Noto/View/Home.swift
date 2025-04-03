@@ -16,47 +16,49 @@ struct Home: View {
     @FocusState private var isKeyboardActive: Bool
     @State private var titleNoteSize: CGSize = .zero
     @Namespace private var animation
-    @Query(sort: [.init(\Note.dateCreated, order: .reverse)], animation: .snappy)
-    private var notes: [Note]
     @Environment(\.modelContext) private var context
     
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(spacing: 20) {
-                SearchBar()
-                
-                LazyVGrid(columns: Array(repeating: GridItem(), count: 2)) {
-                    ForEach(notes) { note in
-                        CardView(note)
-                            .frame(height: 160)
-                            .onTapGesture {
-                                guard selectedNote == nil else { return }
-                                selectedNote = note
-                                note.allowsHitTesting = true
-                                withAnimation(noteAnimation) {
-                                    animateView = true
+        SearchQueryView(searchText: searchText) { notes in
+            ScrollView(.vertical) {
+                VStack(spacing: 20) {
+                    SearchBar()
+                    
+                    LazyVGrid(columns: Array(repeating: GridItem(), count: 2)) {
+                        ForEach(notes) { note in
+                            CardView(note)
+                                .frame(height: 160)
+                                .onTapGesture {
+                                    guard selectedNote == nil else { return }
+                                    isKeyboardActive = false
+                                    
+                                    selectedNote = note
+                                    note.allowsHitTesting = true
+                                    withAnimation(noteAnimation) {
+                                        animateView = true
+                                    }
                                 }
-                            }
+                        }
                     }
                 }
             }
-        }
-        .safeAreaPadding(15)
-        .overlay {
-            GeometryReader {
-                let size = $0.size
-                ForEach(notes) { note in
-                    if note.id == selectedNote?.id && animateView {
-                        DetailView(size: size, titleNoteSize: titleNoteSize, animation: animation, note: note)
-                            .ignoresSafeArea(.container, edges: .top)
+            .safeAreaPadding(15)
+            .overlay {
+                GeometryReader {
+                    let size = $0.size
+                    ForEach(notes) { note in
+                        if note.id == selectedNote?.id && animateView {
+                            DetailView(size: size, titleNoteSize: titleNoteSize, animation: animation, note: note)
+                                .ignoresSafeArea(.container, edges: .top)
+                        }
                     }
                 }
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                BottomBar()
+            }
+            .focused($isKeyboardActive)
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomBar()
-        }
-        .focused($isKeyboardActive)
     }
     
     /// Custom Search Bar With Some Basic Components
